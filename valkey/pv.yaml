@@ -1,0 +1,27 @@
+
+{{- if .Values.createStaticPVs }}
+{{- range $i := until (.Values.replicaCount | int) }}
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: valkey-pv-{{ $i }}
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  volumeMode: Filesystem
+  storageClassName: nfs
+  nfs:
+    path: /nfsroot/valkey-{{ $i }}
+    server: use production ipaddress
+  claimRef:
+    namespace: caching
+    name: data-valkey-sentinel-{{ $i }}
+
+{{- end }}
+{{- end }}
+
+Note:- if the replica count is 3 it will create 3 replicas for you.
