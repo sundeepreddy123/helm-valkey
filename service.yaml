@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: valkey-sentinel
+  namespace: caching
+spec:
+  clusterIP: None
+  selector:
+    app: valkey-sentinel
+  ports:
+    - name: valkey
+      port: 6379
+    - name: sentinel
+      port: 26379
