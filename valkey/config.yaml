@@ -1,0 +1,14 @@
+# templates/configmap.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: valkey-config
+  namespace: caching
+data:
+  valkey.conf: |
+    bind 0.0.0.0
+    port 6379
+    protected-mode no
+    dir /data
+    requirepass sundeep
+    masterauth password
