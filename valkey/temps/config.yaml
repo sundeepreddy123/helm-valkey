@@ -10,5 +10,5 @@ data:
     port 6379
     protected-mode no
     dir /data
-    requirepass sundeep
+    requirepass sandy
     masterauth password
