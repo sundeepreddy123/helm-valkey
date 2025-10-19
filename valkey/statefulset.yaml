@@ -1,0 +1,110 @@
+# templates/statefulset.yaml
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: valkey-sentinel
+  namespace: caching
+spec:
+  serviceName: valkey-sentinel
+  replicas: 3
+  selector:
+    matchLabels:
+      app: valkey-sentinel
+  template:
+    metadata:
+      labels:
+        app: valkey-sentinel
+    spec:
+      terminationGracePeriodSeconds: 30
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  app: valkey-sentinel
+              topologyKey: "kubernetes.io/hostname"
+      containers:
+        - name: valkey
+          image:  valkey/valkey:7.2.9-alpine
+          command:
+            - sh
+            - -c
+            - |
+              cp /etc/valkey/valkey.conf /data/valkey.conf
+              if [ "$POD_NAME" != "valkey-sentinel-0" ]; then
+                 echo "replicaof valkey-sentinel-0.valkey-sentinel.caching.svc.cluster.local 6379" >> /data/valkey.conf
+              fi
+              valkey-server /data/valkey.conf
+          ports:
+            - containerPort: 6379
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: config
+              mountPath: /etc/valkey
+          readinessProbe:
+            exec:
+              command: ["valkey-cli", "ping"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            exec:
+              command: ["valkey-cli", "ping"]
+            initialDelaySeconds: 15
+            periodSeconds: 10
+
+        - name: sentinel
+          image:  valkey/valkey:7.2.9-alpine 
+          ports:
+            - containerPort: 26379
+          volumeMounts:
+            - name: config
+              mountPath: /etc/valkey
+            - name: sentinel-config
+              mountPath: /etc/sentinel
+          command:
+            - sh
+            - -c
+            - |
+              sleep 10
+              echo "port 26379" > /etc/sentinel/sentinel.conf
+              echo "sentinel monitor mymaster valkey-sentinel-0.valkey-sentinel.caching.svc.cluster.local 6379 2" >> /etc/sentinel/sentinel.conf
+              echo "sentinel auth-pass mymaster admin" >> /etc/sentinel/sentinel.conf
+              echo "sentinel down-after-milliseconds mymaster 3000" >> /etc/sentinel/sentinel.conf
+              echo "sentinel resolve-hostnames yes" >> /etc/sentinel/sentinel.conf
+              echo "sentinel announce-hostnames yes" >> /etc/sentinel/sentinel.conf
+              echo "sentinel parallel-syncs mymaster 1" >> /etc/sentinel/sentinel.conf
+              echo "sentinel failover-timeout mymaster 5000" >> /etc/sentinel/sentinel.conf
+              valkey-sentinel /etc/sentinel/sentinel.conf
+          readinessProbe:
+            exec:
+              command: ["valkey-cli", "-p", "26379", "ping"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            exec:
+              command: ["valkey-cli", "-p", "26379", "ping"]
+            initialDelaySeconds: 15
+            periodSeconds: 10
+
+      volumes:
+        - name: config
+          configMap:
+            name: valkey-config
+        - name: sentinel-config
+          emptyDir: {}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 1Gi
+        storageClassName: nfs
+
